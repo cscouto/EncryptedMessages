@@ -27,7 +27,7 @@ struct ContentView: View {
                 }
                 ToolbarItem {
                     Button(action: addUser) {
-                        Label("Add Item", systemImage: "plus")
+                        Label("Add User", systemImage: "plus")
                     }
                 }
             }
@@ -63,7 +63,12 @@ struct ContentView: View {
     private func deleteUsers(offsets: IndexSet) {
         withAnimation {
             for index in offsets {
-                modelContext.delete(users[index])
+                let user = users[index]
+                
+                //delete key from keychain for deleted user
+                CryptoHelper.deleteKey(for: user.id)
+                
+                modelContext.delete(user)
             }
         }
     }

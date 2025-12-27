@@ -27,6 +27,11 @@ struct UserDetailView: View {
             Text("Created: \(user.timestamp.formatted(date: .abbreviated, time: .shortened))")
                 .font(.caption)
                 .foregroundColor(.secondary)
+            
+            Divider()
+            
+            QRCodeView(payload: QRPayload(userId: user.id, relKey: user.relKey))
+                .frame(width: 200, height: 200)
         }
         .padding()
     }

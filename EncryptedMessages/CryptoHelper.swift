@@ -43,17 +43,33 @@ final class CryptoHelper {
             kSecAttrApplicationTag as String: id,
             kSecReturnData as String: true
         ]
-
+        
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-
+        
         guard
             status == errSecSuccess,
             let data = item as? Data
         else {
             throw NSError(domain: "KeychainError", code: Int(status))
         }
-
+        
         return try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: data)
+    }
+    
+    //delete key from keychain
+    static func deleteKey(for id: String) {
+        let tagData = id.data(using: .utf8)!
+        
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: tagData,
+            kSecAttrKeyType as String: kSecAttrKeyTypeEC
+        ]
+        
+        let status = SecItemDelete(query as CFDictionary)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            print("Failed to delete key from Keychain: \(status)")
+        }
     }
 }
