@@ -8,11 +8,6 @@
 import SwiftUI
 import CoreImage.CIFilterBuiltins
 
-struct QRPayload: Codable {
-    let userId: String
-    let relKey: String
-}
-
 struct QRCodeView: View {
     let payload: QRPayload
     private let context = CIContext()

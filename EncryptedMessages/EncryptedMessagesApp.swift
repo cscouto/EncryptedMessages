@@ -12,7 +12,7 @@ import SwiftData
 struct EncryptedMessagesApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            User.self,
+            Chat.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -25,7 +25,7 @@ struct EncryptedMessagesApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ChatListView()
         }
         .modelContainer(sharedModelContainer)
     }
