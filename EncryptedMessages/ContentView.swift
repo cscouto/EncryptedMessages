@@ -10,46 +10,60 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
-
+    @Query private var users: [User]
+    @State private var selectedUserId: String?
+    
     var body: some View {
         NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
+            List(users, selection: $selectedUserId) { user in
+                ForEach(users, id: \.id) { user in
+                    Text(user.id)
                 }
-                .onDelete(perform: deleteItems)
+                .onDelete(perform: deleteUsers)
             }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     EditButton()
                 }
                 ToolbarItem {
-                    Button(action: addItem) {
+                    Button(action: addUser) {
                         Label("Add Item", systemImage: "plus")
                     }
                 }
             }
         } detail: {
-            Text("Select an item")
+            if let selectedId = selectedUserId,
+               let user = users.first(where: { $0.id == selectedId }) {
+                UserDetailView(user: user)
+            } else {
+                Text("Select a user")
+            }
         }
     }
-
-    private func addItem() {
+    
+    private func addUser() {
         withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+            let userId = UUID().uuidString
+            do {
+                let relKey = try CryptoHelper.generateKey(for: userId)
+                let newUser = User(
+                    id: userId,
+                    userPublicKey: nil,
+                    relKey: relKey,
+                    timestamp: Date()
+                )
+                modelContext.insert(newUser)
+            } catch {
+                //handle error
+            }
+            
         }
     }
-
-    private func deleteItems(offsets: IndexSet) {
+    
+    private func deleteUsers(offsets: IndexSet) {
         withAnimation {
             for index in offsets {
-                modelContext.delete(items[index])
+                modelContext.delete(users[index])
             }
         }
     }

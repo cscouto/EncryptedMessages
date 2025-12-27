@@ -11,8 +11,9 @@ import Security
 
 final class CryptoHelper {
     //generate private key for relationship
-    static func generateKey(for id: String) -> String {
+    static func generateKey(for id: String) throws -> String  {
         let privateKey = Curve25519.KeyAgreement.PrivateKey()
+        try savePrivateKey(privateKey, id: id)
         return privateKey.publicKey.rawRepresentation.base64EncodedString()
     }
     
