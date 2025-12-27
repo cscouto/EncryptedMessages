@@ -88,29 +88,34 @@ struct ChatListView: View {
     private func handleScannedQRCode(_ scannedString: String) {
         guard !isProcessingScan else { return }  // ignore duplicates
         isProcessingScan = true
-
+        
         defer { isProcessingScan = false } // reset after handling
-
+        
         guard let data = scannedString.data(using: .utf8),
-              let payload = try? JSONDecoder().decode(ChatQRPayload.self, from: data) else {
+              let payload = try? JSONDecoder().decode(QRPayload.self, from: data) else {
             print("Invalid QR code")
             return
         }
-
+        
         withAnimation {
             if let existingChat = chats.first(where: { $0.id == payload.chatId }) {
-                // Update existing chat
-                existingChat.relKey = payload.chatRelKey
+                // Update existing user
+                existingChat.readingKey = payload.pubKey
                 modelContext.insert(existingChat)
             } else {
-                // Create new chat
-                let newChat = Chat(
-                    id: payload.chatId,
-                    name: "New Chat",
-                    relKey: payload.chatRelKey,
-                    timestamp: Date()
-                )
-                modelContext.insert(newChat)
+                // Create new user
+                do {
+                    let pubKey = try CryptoHelper.generateKey(for: payload.chatId)
+                    let newChat = Chat(
+                        id: payload.chatId,
+                        writingKey: pubKey,
+                        readingKey: payload.pubKey,
+                        timestamp: Date()
+                    )
+                    modelContext.insert(newChat)
+                } catch {
+                    //handle error
+                }
             }
         }
     }

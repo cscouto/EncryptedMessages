@@ -72,4 +72,28 @@ final class CryptoHelper {
             print("Failed to delete key from Keychain: \(status)")
         }
     }
+    
+    //encrypt message
+    static func encrypt(message: String, using relKeyString: String) throws -> String {
+        guard let keyData = Data(base64Encoded: relKeyString) else {
+            throw NSError(domain: "CryptoHelper", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid key"])
+        }
+        let symmetricKey = SymmetricKey(data: keyData)
+        let sealedBox = try AES.GCM.seal(Data(message.utf8), using: symmetricKey)
+        return sealedBox.combined!.base64EncodedString()
+    }
+    
+    //decrypt message
+    static func decrypt(message: String, using relKeyString: String) throws -> String {
+        guard let keyData = Data(base64Encoded: relKeyString) else {
+            throw NSError(domain: "CryptoHelper", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid key"])
+        }
+        let symmetricKey = SymmetricKey(data: keyData)
+        guard let encryptedData = Data(base64Encoded: message) else {
+            throw NSError(domain: "CryptoHelper", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid encrypted message"])
+        }
+        let box = try AES.GCM.SealedBox(combined: encryptedData)
+        let decrypted = try AES.GCM.open(box, using: symmetricKey)
+        return String(data: decrypted, encoding: .utf8) ?? ""
+    }
 }
