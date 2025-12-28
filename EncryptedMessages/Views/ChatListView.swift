@@ -11,40 +11,49 @@ import SwiftData
 struct ChatListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var chats: [Chat]
-    @State private var selectedChatId: String?
-    @State private var isShowingScanner = false
-    @State private var isProcessingScan = false
-    
+
+    @StateObject private var vm = ChatListViewModel()
+
     var body: some View {
         NavigationSplitView {
-            List(chats, selection: $selectedChatId) { chat in
+            List(selection: $vm.selectedChatId) {
                 ForEach(chats, id: \.id) { chat in
                     Text(chat.id)
+                        .tag(chat.id)
                 }
-                .onDelete(perform: deleteChats)
+                .onDelete { offsets in
+                    withAnimation {
+                        vm.deleteChats(offsets: offsets, chats: chats, modelContext: modelContext)
+                    }
+                }
             }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     EditButton()
                 }
                 ToolbarItemGroup {
-                    Button(action: addChat) {
+                    Button {
+                        withAnimation { vm.addChat(modelContext: modelContext) }
+                    } label: {
                         Label("Add Chat", systemImage: "plus")
                     }
-                    Button(action: {
-                        isShowingScanner = true
-                    }) {
+
+                    Button {
+                        vm.isShowingScanner = true
+                    } label: {
                         Label("Scan QR", systemImage: "qrcode.viewfinder")
                     }
                 }
             }
-            .sheet(isPresented: $isShowingScanner) {
+            .sheet(isPresented: $vm.isShowingScanner) {
                 QRScannerView { scannedString in
-                    handleScannedQRCode(scannedString)
+                    withAnimation {
+                        vm.handleScannedQRCode(scannedString, chats: chats, modelContext: modelContext)
+                    }
                 }
             }
         } detail: {
-            if let selectedId = selectedChatId,
+            if let selectedId = vm.selectedChatId,
                let chat = chats.first(where: { $0.id == selectedId }) {
                 ChatDetailView(chat: chat)
             } else {
@@ -52,72 +61,4 @@ struct ChatListView: View {
             }
         }
     }
-    
-    private func addChat() {
-        withAnimation {
-            let chatId = UUID().uuidString
-            do {
-                let pubKey = try CryptoHelper.generateKey(for: chatId)
-                let newChat = Chat(
-                    id: chatId,
-                    writingKey: pubKey,
-                    readingKey: nil,
-                    timestamp: Date()
-                )
-                modelContext.insert(newChat)
-            } catch {
-                //handle error
-            }
-            
-        }
-    }
-    
-    private func deleteChats(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                let chat = chats[index]
-                
-                //delete key from keychain for deleted user
-                CryptoHelper.deleteKey(for: chat.id)
-                
-                modelContext.delete(chat)
-            }
-        }
-    }
-    
-    private func handleScannedQRCode(_ scannedString: String) {
-        guard !isProcessingScan else { return }  // ignore duplicates
-        isProcessingScan = true
-        
-        defer { isProcessingScan = false } // reset after handling
-        
-        guard let data = scannedString.data(using: .utf8),
-              let payload = try? JSONDecoder().decode(QRPayload.self, from: data) else {
-            print("Invalid QR code")
-            return
-        }
-        
-        withAnimation {
-            if let existingChat = chats.first(where: { $0.id == payload.chatId }) {
-                // Update existing user
-                existingChat.theirPublicKey = payload.pubKey
-                modelContext.insert(existingChat)
-            } else {
-                // Create new user
-                do {
-                    let pubKey = try CryptoHelper.generateKey(for: payload.chatId)
-                    let newChat = Chat(
-                        id: payload.chatId,
-                        writingKey: pubKey,
-                        readingKey: payload.pubKey,
-                        timestamp: Date()
-                    )
-                    modelContext.insert(newChat)
-                } catch {
-                    //handle error
-                }
-            }
-        }
-    }
 }
-

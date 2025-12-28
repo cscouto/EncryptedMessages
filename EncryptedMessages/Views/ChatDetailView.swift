@@ -8,35 +8,33 @@
 import SwiftUI
 
 struct ChatDetailView: View {
-    var chat: Chat
+    @StateObject private var vm: ChatDetailViewModel
     
-    @State private var messageToEncrypt: String = ""
-    @State private var encryptedMessage: String = ""
-    
-    @State private var messageToDecrypt: String = ""
-    @State private var decryptedMessage: String = ""
-    
-    @State private var isShowingShareSheet = false
-    @State private var selectedMode: Mode = .encrypt
+    init(chat: Chat) {
+        _vm = StateObject(wrappedValue: ChatDetailViewModel(chat: chat))
+    }
     
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                Text("writing: \(chat.myPublicKey)\nreading: \(chat.theirPublicKey ?? "")")
+            VStack(spacing: 24) {                
                 headerSection
                 qrSection
-                Picker("Mode", selection: $selectedMode) {
-                    ForEach(Mode.allCases, id: \.self) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.vertical)
                 
-                if selectedMode == .encrypt {
-                    encryptSection
-                } else {
-                    decryptSection
+                //only display segmentedcontrol if they have the user key
+                if let _ = vm.chat.theirPublicKey {
+                    Picker("Mode", selection: $vm.selectedMode) {
+                        ForEach(Mode.allCases, id: \.self) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.vertical)
+                    
+                    if vm.selectedMode == .encrypt {
+                        encryptSection
+                    } else {
+                        decryptSection
+                    }
                 }
                 
             }
@@ -44,8 +42,8 @@ struct ChatDetailView: View {
         }
         .navigationTitle("Secure Chat")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $isShowingShareSheet) {
-            ActivityViewController(activityItems: [encryptedMessage])
+        .sheet(isPresented: $vm.isShowingShareSheet) {
+            ActivityViewController(activityItems: [vm.encryptedMessage])
         }
     }
 }
@@ -57,7 +55,7 @@ private extension ChatDetailView {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             
-            Text(chat.timestamp.formatted(date: .abbreviated, time: .shortened))
+            Text(vm.chat.timestamp.formatted(date: .abbreviated, time: .shortened))
                 .font(.footnote)
         }
     }
@@ -74,8 +72,8 @@ private extension ChatDetailView {
             
             QRCodeView(
                 payload: QRPayload(
-                    chatId: chat.id,
-                    pubKey: chat.myPublicKey
+                    chatId: vm.chat.id,
+                    pubKey: vm.chat.myPublicKey
                 )
             )
             .frame(width: 200, height: 200)
@@ -92,22 +90,22 @@ private extension ChatDetailView {
                 subtitle: "Write a message and share it securely."
             )
             
-            TextEditor(text: $messageToEncrypt)
+            TextEditor(text: $vm.messageToEncrypt)
                 .frame(minHeight: 120)
                 .padding(12)
                 .background(Color(uiColor: .secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             
             Button {
-                encryptAndShare()
+                vm.encryptAndShare()
             } label: {
                 Label("Encrypt & Share", systemImage: "lock.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(messageToEncrypt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(!vm.canEncrypt)
             
-            if !encryptedMessage.isEmpty {
+            if !vm.encryptedMessage.isEmpty {
                 encryptedOutput
             }
         }
@@ -119,14 +117,14 @@ private extension ChatDetailView {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             
-            Text(encryptedMessage)
+            Text(vm.encryptedMessage)
                 .font(.system(.footnote, design: .monospaced))
                 .padding(12)
                 .background(Color(uiColor: .secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .contextMenu {
                     Button("Copy") {
-                        UIPasteboard.general.string = encryptedMessage
+                        UIPasteboard.general.string = vm.encryptedMessage
                     }
                 }
         }
@@ -139,22 +137,22 @@ private extension ChatDetailView {
                 subtitle: "Paste an encrypted message you received."
             )
             
-            TextEditor(text: $messageToDecrypt)
+            TextEditor(text: $vm.messageToDecrypt)
                 .frame(minHeight: 120)
                 .padding(12)
                 .background(Color(uiColor: .secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             
             Button {
-                decryptMessage()
+                vm.decryptMessage()
             } label: {
                 Label("Decrypt Message", systemImage: "lock.open.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .disabled(messageToDecrypt.isEmpty)
+            .disabled(!vm.canDecrypt)
             
-            if !decryptedMessage.isEmpty {
+            if !vm.decryptedMessage.isEmpty {
                 decryptedOutput
             }
         }
@@ -166,7 +164,7 @@ private extension ChatDetailView {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             
-            Text(decryptedMessage)
+            Text(vm.decryptedMessage)
                 .padding(12)
                 .background(Color(uiColor: .tertiarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -175,48 +173,10 @@ private extension ChatDetailView {
     
     func sectionHeader(title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.headline)
-            
+            Text(title).font(.headline)
             Text(subtitle)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-        }
-    }
-    
-    func encryptAndShare() {
-        guard let readingKey = chat.theirPublicKey else {
-            encryptedMessage = "You don’t have permission to decrypt this message."
-            return
-        }
-        
-        do {
-            encryptedMessage = try CryptoHelper.encrypt(
-                message: messageToEncrypt,
-                using: readingKey,
-                myKeyId: chat.id
-            )
-            UIPasteboard.general.string = encryptedMessage
-            isShowingShareSheet = true
-        } catch {
-            encryptedMessage = "Encryption failed."
-        }
-    }
-    
-    func decryptMessage() {
-        guard let readingKey = chat.theirPublicKey else {
-            decryptedMessage = "You don’t have permission to decrypt this message."
-            return
-        }
-        
-        do {
-            decryptedMessage = try CryptoHelper.decrypt(
-                message: messageToDecrypt,
-                using: readingKey,
-                myKeyId: chat.id
-            )
-        } catch {
-            decryptedMessage = "Decryption failed."
         }
     }
 }
@@ -228,11 +188,8 @@ enum Mode: String, CaseIterable {
 
 struct ActivityViewController: UIViewControllerRepresentable {
     let activityItems: [Any]
-    
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-        return controller
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
     }
-    
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
