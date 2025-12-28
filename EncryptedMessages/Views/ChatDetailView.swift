@@ -17,120 +17,213 @@ struct ChatDetailView: View {
     @State private var decryptedMessage: String = ""
     
     @State private var isShowingShareSheet = false
+    @State private var selectedMode: Mode = .encrypt
     
     var body: some View {
         ScrollView {
-            VStack(alignment: .center, spacing: 20) {
-                
-                Text("Created: \(chat.timestamp.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                
-                //generate qrcode to share public key
-                QRCodeView(
-                    payload: QRPayload(
-                        chatId: chat.id,
-                        pubKey: chat.writingKey
-                    )
-                )
-                .frame(width: 200, height: 200)
-                
-                Divider()
-                
-                Text("Type a message to share:")
-                    .font(.subheadline)
-                
-                TextEditor(text: $messageToEncrypt)
-                    .frame(height: 100)
-                    .padding(4)
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray))
-                
-                Button(action: {
-                    shareEncryptedMessage()
-                    isShowingShareSheet = true
-                }) {
-                    Text("Encrypt & Share")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
+            VStack(spacing: 24) {
+                Text("writing: \(chat.myPublicKey)\nreading: \(chat.theirPublicKey ?? "")")
+                headerSection
+                qrSection
+                Picker("Mode", selection: $selectedMode) {
+                    ForEach(Mode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
                 }
-                .disabled(messageToEncrypt.isEmpty)
-                .sheet(isPresented: $isShowingShareSheet) {
-                    ActivityViewController(activityItems: [encryptedMessage])
+                .pickerStyle(.segmented)
+                .padding(.vertical)
+                
+                if selectedMode == .encrypt {
+                    encryptSection
+                } else {
+                    decryptSection
                 }
                 
-                if !encryptedMessage.isEmpty {
-                    Text("Encrypted Message:")
-                        .font(.subheadline)
-                    Text(encryptedMessage)
-                        .font(.footnote)
-                        .foregroundColor(.gray)
-                        .contextMenu {
-                            Button("Copy") {
-                                UIPasteboard.general.string = encryptedMessage
-                            }
-                        }
-                }
-                
-                Divider()
-                
-                Text("Paste encrypted message:")
-                    .font(.subheadline)
-                
-                TextEditor(text: $messageToDecrypt)
-                    .frame(height: 100)
-                    .padding(4)
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray))
-                
-                Button(action: decryptMessage) {
-                    Text("Decrypt Message")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.green)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
-                }
-                
-                if !decryptedMessage.isEmpty {
-                    Text("Decrypted Message:")
-                        .font(.subheadline)
-                    Text(decryptedMessage)
-                        .font(.body)
-                        .foregroundColor(.primary)
-                        .padding(4)
-                        .background(Color(UIColor.systemGray6))
-                        .cornerRadius(8)
-                }
-                
-                Spacer()
             }
             .padding()
         }
+        .navigationTitle("Secure Chat")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $isShowingShareSheet) {
+            ActivityViewController(activityItems: [encryptedMessage])
+        }
     }
-    
-    private func shareEncryptedMessage() {
-        do {
-            encryptedMessage = try CryptoHelper.encrypt(message: messageToEncrypt, using: chat.writingKey)
-            UIPasteboard.general.string = encryptedMessage
-        } catch {
-            encryptedMessage = "Error encrypting message: \(error)"
+}
+
+private extension ChatDetailView {
+    var headerSection: some View {
+        VStack(spacing: 4) {
+            Text("Created")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            Text(chat.timestamp.formatted(date: .abbreviated, time: .shortened))
+                .font(.footnote)
         }
     }
     
-    private func decryptMessage() {
-        guard let readingKey = chat.readingKey else {
-            decryptedMessage = "You don't have permission to decrypt this message."
+    var qrSection: some View {
+        VStack(spacing: 12) {
+            Text("Invite someone")
+                .font(.headline)
+            
+            Text("Scan this QR code in person to exchange keys securely.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            
+            QRCodeView(
+                payload: QRPayload(
+                    chatId: chat.id,
+                    pubKey: chat.myPublicKey
+                )
+            )
+            .frame(width: 200, height: 200)
+            .padding()
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
+    
+    var encryptSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionHeader(
+                title: "Encrypt & Share",
+                subtitle: "Write a message and share it securely."
+            )
+            
+            TextEditor(text: $messageToEncrypt)
+                .frame(minHeight: 120)
+                .padding(12)
+                .background(Color(uiColor: .secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            
+            Button {
+                encryptAndShare()
+            } label: {
+                Label("Encrypt & Share", systemImage: "lock.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(messageToEncrypt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            
+            if !encryptedMessage.isEmpty {
+                encryptedOutput
+            }
+        }
+    }
+    
+    var encryptedOutput: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Encrypted message")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            Text(encryptedMessage)
+                .font(.system(.footnote, design: .monospaced))
+                .padding(12)
+                .background(Color(uiColor: .secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .contextMenu {
+                    Button("Copy") {
+                        UIPasteboard.general.string = encryptedMessage
+                    }
+                }
+        }
+    }
+    
+    var decryptSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionHeader(
+                title: "Decrypt a message",
+                subtitle: "Paste an encrypted message you received."
+            )
+            
+            TextEditor(text: $messageToDecrypt)
+                .frame(minHeight: 120)
+                .padding(12)
+                .background(Color(uiColor: .secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            
+            Button {
+                decryptMessage()
+            } label: {
+                Label("Decrypt Message", systemImage: "lock.open.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(messageToDecrypt.isEmpty)
+            
+            if !decryptedMessage.isEmpty {
+                decryptedOutput
+            }
+        }
+    }
+    
+    var decryptedOutput: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Decrypted message")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            Text(decryptedMessage)
+                .padding(12)
+                .background(Color(uiColor: .tertiarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+    
+    func sectionHeader(title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.headline)
+            
+            Text(subtitle)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+    
+    func encryptAndShare() {
+        guard let readingKey = chat.theirPublicKey else {
+            encryptedMessage = "You don’t have permission to decrypt this message."
             return
         }
         
         do {
-            decryptedMessage = try CryptoHelper.decrypt(message: messageToDecrypt, using: readingKey)
+            encryptedMessage = try CryptoHelper.encrypt(
+                message: messageToEncrypt,
+                using: readingKey,
+                myKeyId: chat.id
+            )
+            UIPasteboard.general.string = encryptedMessage
+            isShowingShareSheet = true
         } catch {
-            decryptedMessage = "Error decrypting message: \(error)"
+            encryptedMessage = "Encryption failed."
         }
     }
+    
+    func decryptMessage() {
+        guard let readingKey = chat.theirPublicKey else {
+            decryptedMessage = "You don’t have permission to decrypt this message."
+            return
+        }
+        
+        do {
+            decryptedMessage = try CryptoHelper.decrypt(
+                message: messageToDecrypt,
+                using: readingKey,
+                myKeyId: chat.id
+            )
+        } catch {
+            decryptedMessage = "Decryption failed."
+        }
+    }
+}
+
+enum Mode: String, CaseIterable {
+    case encrypt = "Encrypt"
+    case decrypt = "Decrypt"
 }
 
 struct ActivityViewController: UIViewControllerRepresentable {

@@ -73,27 +73,88 @@ final class CryptoHelper {
         }
     }
     
-    //encrypt message
-    static func encrypt(message: String, using relKeyString: String) throws -> String {
-        guard let keyData = Data(base64Encoded: relKeyString) else {
-            throw NSError(domain: "CryptoHelper", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid key"])
+    //encrypt message for recipient
+    static func encrypt(message: String, using recipientPublicKey: String, myKeyId: String) throws -> String {
+        //load your private key
+        let myPrivateKey = try loadPrivateKey(for: myKeyId)
+
+        //decode recipient's public key
+        guard let pubKeyData = Data(base64Encoded: recipientPublicKey) else {
+            throw NSError(domain: "CryptoHelper", code: 1)
         }
-        let symmetricKey = SymmetricKey(data: keyData)
+
+        let recipientKey = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: pubKeyData)
+
+        //derive shared secret
+        let sharedSecret = try myPrivateKey.sharedSecretFromKeyAgreement(with: recipientKey)
+
+        //derive symmetric key
+        let symmetricKey = sharedSecret.hkdfDerivedSymmetricKey(
+            using: SHA256.self,
+            salt: Data(),
+            sharedInfo: Data(),
+            outputByteCount: 32
+        )
+
+        //encrypt
         let sealedBox = try AES.GCM.seal(Data(message.utf8), using: symmetricKey)
         return sealedBox.combined!.base64EncodedString()
     }
     
-    //decrypt message
-    static func decrypt(message: String, using relKeyString: String) throws -> String {
-        guard let keyData = Data(base64Encoded: relKeyString) else {
-            throw NSError(domain: "CryptoHelper", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid key"])
+    //decrypt message from sender
+    static func decrypt(message: String, using senderPublicKey: String, myKeyId: String) throws -> String {
+        //load your private key
+        let myPrivateKey = try loadPrivateKey(for: myKeyId)
+
+        //decode sender public key
+        guard let pubKeyData = Data(base64Encoded: senderPublicKey),
+              let encryptedData = Data(base64Encoded: message)
+        else {
+            throw NSError(domain: "CryptoHelper", code: 2)
         }
-        let symmetricKey = SymmetricKey(data: keyData)
-        guard let encryptedData = Data(base64Encoded: message) else {
-            throw NSError(domain: "CryptoHelper", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid encrypted message"])
-        }
+
+        let senderKey = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: pubKeyData)
+
+        //derive shared secret
+        let sharedSecret = try myPrivateKey.sharedSecretFromKeyAgreement(with: senderKey)
+
+        //derive symmetric key
+        let symmetricKey = sharedSecret.hkdfDerivedSymmetricKey(
+            using: SHA256.self,
+            salt: Data(),
+            sharedInfo: Data(),
+            outputByteCount: 32
+        )
+
+        //decrypt
         let box = try AES.GCM.SealedBox(combined: encryptedData)
-        let decrypted = try AES.GCM.open(box, using: symmetricKey)
-        return String(data: decrypted, encoding: .utf8) ?? ""
+        let decryptedData = try AES.GCM.open(box, using: symmetricKey)
+
+        return String(decoding: decryptedData, as: UTF8.self)
     }
+    
+    //code to generate encrypted messages without needding the recipients key
+//    //encrypt message
+//    static func encrypt(message: String, using relKeyString: String) throws -> String {
+//        guard let keyData = Data(base64Encoded: relKeyString) else {
+//            throw NSError(domain: "CryptoHelper", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid key"])
+//        }
+//        let symmetricKey = SymmetricKey(data: keyData)
+//        let sealedBox = try AES.GCM.seal(Data(message.utf8), using: symmetricKey)
+//        return sealedBox.combined!.base64EncodedString()
+//    }
+//    
+//    //decrypt message
+//    static func decrypt(message: String, using relKeyString: String) throws -> String {
+//        guard let keyData = Data(base64Encoded: relKeyString) else {
+//            throw NSError(domain: "CryptoHelper", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid key"])
+//        }
+//        let symmetricKey = SymmetricKey(data: keyData)
+//        guard let encryptedData = Data(base64Encoded: message) else {
+//            throw NSError(domain: "CryptoHelper", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid encrypted message"])
+//        }
+//        let box = try AES.GCM.SealedBox(combined: encryptedData)
+//        let decrypted = try AES.GCM.open(box, using: symmetricKey)
+//        return String(data: decrypted, encoding: .utf8) ?? ""
+//    }
 }

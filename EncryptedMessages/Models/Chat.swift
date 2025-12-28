@@ -11,14 +11,14 @@ import SwiftData
 @Model
 final class Chat: Identifiable {
     @Attribute(.unique) var id: String
-    var writingKey: String
-    var readingKey: String?
+    var myPublicKey: String
+    var theirPublicKey: String?
     var timestamp: Date
     
     init(id: String, writingKey: String, readingKey: String? = nil, timestamp: Date) {
         self.id = id
-        self.writingKey = writingKey
-        self.readingKey = readingKey
+        self.myPublicKey = writingKey
+        self.theirPublicKey = readingKey
         self.timestamp = timestamp
     }
 }

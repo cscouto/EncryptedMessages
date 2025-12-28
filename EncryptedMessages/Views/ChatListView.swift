@@ -100,7 +100,7 @@ struct ChatListView: View {
         withAnimation {
             if let existingChat = chats.first(where: { $0.id == payload.chatId }) {
                 // Update existing user
-                existingChat.readingKey = payload.pubKey
+                existingChat.theirPublicKey = payload.pubKey
                 modelContext.insert(existingChat)
             } else {
                 // Create new user
